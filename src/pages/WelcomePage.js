@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Navigation from '../components/Navigation';
-import { Send } from 'lucide-react';
+import { Send, FileText, ExternalLink, Download} from 'lucide-react';
 import { listS3Objects } from '../utils/s3Upload';
 
 const WelcomePage = ({ setCurrentPage, chatHistory }) => {
@@ -8,7 +8,7 @@ const WelcomePage = ({ setCurrentPage, chatHistory }) => {
   const [selectedContent, setSelectedContent] = useState([]);
   const [currentPrompt, setCurrentPrompt] = useState('');
 
-  const [patientRecords, setPatientRecords] = useState([]);//([
+  const [patientRecords, setPatientRecords] = useState([]);
 
   const [clinicalGuides, setClinicalGuides] = useState([
     { id: 1, name: 'Diabetes Treatment Protocol', type: 'guide', description: 'Standard treatment guidelines' },
@@ -38,8 +38,8 @@ const WelcomePage = ({ setCurrentPage, chatHistory }) => {
             key: pdf.key // Keep the S3 key for reference
           }));
           
-          // Add fetched records to existing mock data
-          setPatientRecords(prev => [...prev, ...records]);
+          // Replace existing records with fetched records (avoid duplicates)
+          setPatientRecords(records);
           console.log('Successfully loaded', records.length, 'PDFs from S3');
           
         } else {
@@ -53,6 +53,7 @@ const WelcomePage = ({ setCurrentPage, chatHistory }) => {
     
     fetchPdfs();
   }, []);  
+
   const displayChatHistory = chatHistory.length > 0 ? chatHistory : chatHistory;
 
   const handleContentSelect = (item) => {
@@ -66,6 +67,74 @@ const WelcomePage = ({ setCurrentPage, chatHistory }) => {
 
   const isSelected = (item) => {
     return selectedContent.includes(`${item.type}-${item.id}`);
+  };
+
+  // Function to open PDF in new tab
+  const handleOpenPDF = (url, fileName, event) => {
+    event.stopPropagation(); // Prevent selection when clicking the PDF link
+    
+    if (!url) {
+      alert('PDF URL not available');
+      return;
+    }
+
+    try {
+      // Open PDF in new tab
+      const newTab = window.open(url, '_blank', 'noopener,noreferrer');
+      
+      if (!newTab) {
+        // If popup was blocked, show an alert with the URL
+        // alert(`Popup blocked. Please manually open: ${url}`);
+      }
+    } catch (error) {
+      console.error('Error opening PDF:', error);
+      alert('Error opening PDF. Please try again.');
+    }
+  };
+
+  const handleDownloadPDF = async (url, fileName, event) => {
+    event.stopPropagation(); // Prevent selection when clicking the download button
+    
+    if (!url) {
+      alert('PDF URL not available');
+      return;
+    }
+
+    try {
+      // Show loading state (optional)
+      console.log(`Starting download: ${fileName}.pdf`);
+      
+      // Fetch the file as blob
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      // Convert response to blob
+      const blob = await response.blob();
+      
+      // Create object URL for the blob
+      const blobUrl = window.URL.createObjectURL(blob);
+      
+      // Create temporary link element for download
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `${fileName}.pdf`; // Set the download filename
+      
+      // Append to body, click, and remove
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up the object URL
+      window.URL.revokeObjectURL(blobUrl);
+      
+      console.log(`Successfully downloaded: ${fileName}.pdf`);
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      alert('Error downloading PDF. Please try again.');
+    }
   };
 
   const handlePromptSubmit = () => {
@@ -192,40 +261,59 @@ const WelcomePage = ({ setCurrentPage, chatHistory }) => {
                 )}
                 {activeTab === 'records' && (
                   <div className="space-y-3">
-                    {patientRecords.map((record) => (
-                      <div 
-                        key={record.id} 
-                        onClick={() => handleContentSelect(record)} 
-                        className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                          isSelected(record) ? 'bg-blue-50 border-blue-500 shadow-md' : 'hover:bg-gray-50 border-gray-200'
-                        }`}
-                      >
-                        <div className="flex items-start space-x-3">
-                          <input 
-                            type="radio" 
-                            name="content-selection" 
-                            checked={isSelected(record)} 
-                            onChange={() => {}} 
-                            className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500" 
-                          />
-                          <div>
-                            <h4 className="font-medium text-gray-900">{record.name}</h4>
-                            <p className="text-sm text-gray-600">{record.description}</p>
+                    {patientRecords.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                        <p>No patient records found</p>
+                        <p className="text-sm mt-1">Upload PDF files to see them here</p>
+                      </div>
+                    ) : (
+                      patientRecords.map((record) => (
+                        <div 
+                          key={record.id} 
+                          onClick={() => handleContentSelect(record)} 
+                          className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                            isSelected(record) ? 'bg-blue-50 border-blue-500 shadow-md' : 'hover:bg-gray-50 border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-start space-x-3 flex-1">
+                              <input 
+                                type="radio" 
+                                name="content-selection" 
+                                checked={isSelected(record)} 
+                                onChange={() => {}} 
+                                className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500" 
+                              />
+                              <FileText className="w-5 h-5 text-red-500 mt-1 flex-shrink-0" />
+                              <div className="flex-1">
+                                <h4 className="font-medium text-gray-900">{record.name}</h4>
+                                <p className="text-sm text-gray-600">{record.description}</p>
+                              </div>
+                            </div>
                             {record.url && (
-                              <a 
-                                href={record.url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-xs text-blue-600 hover:underline mt-1 block"
-                                onClick={(e) => e.stopPropagation()}
+                              <button
+                                onClick={(e) => handleDownloadPDF(record.url, record.name, e)}
+                                className="ml-2 p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors flex-shrink-0"
+                                title="Open PDF in new tab"
                               >
-                                View PDF
-                              </a>
+                                <Download className="w-4 h-4" />
+                              </button>
                             )}
                           </div>
+                          {record.url && (
+                            <div className="mt-2 ml-8">
+                              <button
+                                onClick={(e) => handleOpenPDF(record.url, record.name, e)}
+                                className="text-xs text-blue-600 hover:text-blue-700 hover:underline font-medium"
+                              >
+                                📄 Open PDF Document
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 )}
                 {activeTab === 'guides' && (
