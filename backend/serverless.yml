@@ -1,0 +1,89 @@
+service: medical-chat-backend
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ${env:AWS_REGION, 'us-east-1'}
+  stage: ${env:STAGE, 'dev'}
+  timeout: 300
+  memorySize: 512
+
+  environment:
+    AWS_REGION: ${env:AWS_REGION, 'us-east-1'}
+    KENDRA_INDEX_ID: ${env:KENDRA_INDEX_ID}
+    S3_BUCKET_NAME: ${env:S3_BUCKET_NAME}
+    DYNAMODB_TABLE_NAME: ${env:DYNAMODB_TABLE_NAME}
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - logs:CreateLogGroup
+        - logs:CreateLogStream
+        - logs:PutLogEvents
+      Resource: 'arn:aws:logs:*:*:*'
+    - Effect: Allow
+      Action:
+        - textract:AnalyzeDocument
+        - textract:DetectDocumentText
+      Resource: '*'
+    - Effect: Allow
+      Action:
+        - comprehendmedical:DetectEntitiesV2
+        - comprehendmedical:DetectPHI
+      Resource: '*'
+    - Effect: Allow
+      Action:
+        - kendra:Query
+        - kendra:BatchPutDocument
+        - kendra:BatchDeleteDocument
+      Resource: 'arn:aws:kendra:${self:provider.region}:*:index/${env:KENDRA_INDEX_ID}'
+    - Effect: Allow
+      Action:
+        - s3:GetObject
+        - s3:PutObject
+      Resource: 'arn:aws:s3:::${env:S3_BUCKET_NAME}/*'
+    - Effect: Allow
+      Action:
+        - bedrock:InvokeModel
+      Resource: '*'
+
+functions:
+  processDocument:
+    handler: functions/processDocument/handler.handler
+    events:
+      - http:
+          path: process-document
+          method: post
+          cors: true
+
+  kendraIndex:
+    handler: functions/kendraIndex/handler.handler
+    events:
+      - http:
+          path: kendra-index
+          method: post
+          cors: true
+
+  kendraSearch:
+    handler: functions/kendraSearch/handler.handler
+    events:
+      - http:
+          path: kendra-search
+          method: post
+          cors: true
+
+  bedrockRAG:
+    handler: functions/bedrockRAG/handler.handler
+    events:
+      - http:
+          path: bedrock-rag
+          method: post
+          cors: true
+
+plugins:
+  - serverless-offline
+
+custom:
+  serverless-offline:
+    httpPort: 3001
+    host: 0.0.0.0
