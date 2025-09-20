@@ -1,4 +1,5 @@
-import { S3Client, PutObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const s3Client = new S3Client({
   region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
@@ -37,6 +38,28 @@ export const uploadFileToS3 = async (file, bucketName, fileName) => {
   }
 };
 
+export const generatePresignedUrl = async (bucketName, key, expiresIn = 3600) => {
+  try {
+    const command = new GetObjectCommand({
+      Bucket: bucketName,
+      Key: key,
+    });
+
+    const signedUrl = await getSignedUrl(s3Client, command, { expiresIn });
+    return {
+      success: true,
+      url: signedUrl
+    };
+  } catch (error) {
+    console.error('Error generating pre-signed URL:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+
 export const listS3Objects = async (bucketName) => {
   try {
     const command = new ListObjectsV2Command({
@@ -45,14 +68,22 @@ export const listS3Objects = async (bucketName) => {
 
     const response = await s3Client.send(command);
     
-    const pdfs = (response.Contents || [])
-      .filter((item) => item.Key.endsWith('.pdf'))
-      .map((item) => ({
-        key: item.Key,
-        url: `https://${bucketName}.s3.${process.env.REACT_APP_AWS_REGION || 'us-east-1'}.amazonaws.com/${item.Key}`,
-        size: item.Size,
-        lastModified: item.LastModified,
-      }));
+    const pdfs = [];
+    
+    // Generate pre-signed URLs for each PDF
+    for (const item of (response.Contents || [])) {
+      if (item.Key.endsWith('.pdf')) {
+        const presignedResult = await generatePresignedUrl(bucketName, item.Key);
+        
+        pdfs.push({
+          key: item.Key,
+          url: presignedResult.success ? presignedResult.url : null,
+          size: item.Size,
+          lastModified: item.LastModified,
+          error: presignedResult.success ? null : presignedResult.error
+        });
+      }
+    }
 
     return {
       success: true,
