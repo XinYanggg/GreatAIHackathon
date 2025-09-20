@@ -1,45 +1,58 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navigation from '../components/Navigation';
 import { Send } from 'lucide-react';
-
-const Inpage_Navigation = ({ currentPage, setCurrentPage }) => (
-  <nav className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
-    <div className="max-w-7xl mx-auto flex justify-between items-center">
-      <h2 className="text-xl font-semibold text-gray-800">Health2Data</h2>
-      <div className="flex space-x-4">
-        <button 
-          onClick={() => setCurrentPage('welcome')}
-          className={`px-4 py-2 rounded-lg ${currentPage === 'welcome' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
-        >
-          Welcome
-        </button>
-        <button 
-          onClick={() => setCurrentPage('assistant')}
-          className={`px-4 py-2 rounded-lg ${currentPage === 'assistant' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
-        >
-          Assistant
-        </button>
-      </div>
-    </div>
-  </nav>
-);
-
+import { listS3Objects } from '../utils/s3Upload';
 
 const WelcomePage = ({ setCurrentPage, chatHistory }) => {
   const [activeTab, setActiveTab] = useState('chats');
   const [selectedContent, setSelectedContent] = useState([]);
   const [currentPrompt, setCurrentPrompt] = useState('');
 
-  const [patientRecords, setpatientRecords] = useState([
-    { id: 1, name: 'John Doe - Medical History', type: 'record', description: 'Complete medical history' },
-    { id: 2, name: 'Jane Smith - Lab Results', type: 'record', description: 'Recent blood work analysis' },
-  ]);
-  
-  const [clinicalGuides, setclinicalGuides] = useState([
+  const [patientRecords, setPatientRecords] = useState([]);//([
+
+  const [clinicalGuides, setClinicalGuides] = useState([
     { id: 1, name: 'Diabetes Treatment Protocol', type: 'guide', description: 'Standard treatment guidelines' },
     { id: 2, name: 'Hypertension Management', type: 'guide', description: 'Clinical best practices' },
   ]);
+  
+  useEffect(() => {
+    async function fetchPdfs() {
+      try {
+        const bucketName = process.env.REACT_APP_S3_BUCKET_NAME;
+        
+        if (!bucketName) {
+          console.log('No S3 bucket configured, skipping PDF fetch');
+          return;
+        }
 
+        const result = await listS3Objects(bucketName);
+        
+        if (result.success) {
+          // Transform the fetched PDFs into patient records format
+          const records = result.data.map((pdf, index) => ({
+            id: `s3-${index}-${Date.now()}`, // Use unique string ID to avoid conflicts
+            name: pdf.key.replace('.pdf', '').replace(/^\d+_/, ''), // Remove timestamp prefix if exists
+            type: 'record',
+            description: `PDF document (${(pdf.size / 1024).toFixed(1)} KB)`,
+            url: pdf.url,
+            key: pdf.key // Keep the S3 key for reference
+          }));
+          
+          // Add fetched records to existing mock data
+          setPatientRecords(prev => [...prev, ...records]);
+          console.log('Successfully loaded', records.length, 'PDFs from S3');
+          
+        } else {
+          console.error('Failed to fetch PDFs from S3:', result.error);
+        }
+        
+      } catch (error) {
+        console.error("Failed to fetch PDFs:", error);
+      }
+    }
+    
+    fetchPdfs();
+  }, []);  
   const displayChatHistory = chatHistory.length > 0 ? chatHistory : chatHistory;
 
   const handleContentSelect = (item) => {
@@ -119,7 +132,7 @@ const WelcomePage = ({ setCurrentPage, chatHistory }) => {
                   activeTab === 'records' ? 'bg-gray-100 font-medium text-gray-900 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-50'
                 }`}
               >
-                Patient Record
+                Patient Record ({patientRecords.length})
               </button>
               <button
                 onClick={() => { setActiveTab('guides'); setSelectedContent([]); }}
@@ -127,7 +140,7 @@ const WelcomePage = ({ setCurrentPage, chatHistory }) => {
                   activeTab === 'guides' ? 'bg-gray-100 font-medium text-gray-900 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-50'
                 }`}
               >
-                Clinical Guide
+                Clinical Guide ({clinicalGuides.length})
               </button>
               <button
                 onClick={() => { setActiveTab('chats'); setSelectedContent([]); }}
@@ -135,40 +148,46 @@ const WelcomePage = ({ setCurrentPage, chatHistory }) => {
                   activeTab === 'chats' ? 'bg-gray-100 font-medium text-gray-900 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-50'
                 }`}
               >
-                Chats
+                Chats ({displayChatHistory.length})
               </button>
             </div>
 
             <div className="max-h-[400px] min-h-[400px] mb-6 overflow-y-auto border border-gray-100 rounded-lg">
-               <div className="p-4 flex-1">
+              <div className="p-4 flex-1">
                 {activeTab === 'chats' && (
                   <div className="space-y-3">
-                    {displayChatHistory.map((chat) => (
-                      <div 
-                        key={chat.id} 
-                        onClick={() => handleContentSelect({ ...chat, type: 'chat' })}
-                        className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                          isSelected({ ...chat, type: 'chat' }) ? 'bg-blue-50 border-blue-500 shadow-md' : 'hover:bg-gray-50 border-gray-200'
-                        }`}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex items-start space-x-3 flex-1">
-                            <input 
-                              type="radio" 
-                              name="content-selection" 
-                              checked={isSelected({ ...chat, type: 'chat' })} 
-                              onChange={() => {}} 
-                              className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500" 
-                            />
-                            <div>
-                              <h4 className="font-medium text-gray-900">{chat.title}</h4>
-                              <p className="text-sm text-gray-600">{chat.description}</p>
-                              <p className="text-xs text-gray-400 mt-1">{chat.timestamp}</p>
+                    {displayChatHistory.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <p>No chat history available</p>
+                      </div>
+                    ) : (
+                      displayChatHistory.map((chat) => (
+                        <div 
+                          key={chat.id} 
+                          onClick={() => handleContentSelect({ ...chat, type: 'chat' })}
+                          className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                            isSelected({ ...chat, type: 'chat' }) ? 'bg-blue-50 border-blue-500 shadow-md' : 'hover:bg-gray-50 border-gray-200'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-start space-x-3 flex-1">
+                              <input 
+                                type="radio" 
+                                name="content-selection" 
+                                checked={isSelected({ ...chat, type: 'chat' })} 
+                                onChange={() => {}} 
+                                className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500" 
+                              />
+                              <div>
+                                <h4 className="font-medium text-gray-900">{chat.title}</h4>
+                                <p className="text-sm text-gray-600">{chat.description}</p>
+                                <p className="text-xs text-gray-400 mt-1">{chat.timestamp}</p>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 )}
                 {activeTab === 'records' && (
@@ -192,6 +211,17 @@ const WelcomePage = ({ setCurrentPage, chatHistory }) => {
                           <div>
                             <h4 className="font-medium text-gray-900">{record.name}</h4>
                             <p className="text-sm text-gray-600">{record.description}</p>
+                            {record.url && (
+                              <a 
+                                href={record.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-600 hover:underline mt-1 block"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                View PDF
+                              </a>
+                            )}
                           </div>
                         </div>
                       </div>
