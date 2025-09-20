@@ -28,7 +28,7 @@ const Sidebar = ({ chatHistory }) => {
         ))}
       </div>
       
-      <div className="p-4 border-t">
+      <div className="p-4 border-gray-200">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
             <User className="w-6 h-6 text-blue-600" />

@@ -2,20 +2,45 @@ import React, { useState } from 'react';
 import Navigation from '../components/Navigation';
 import { Send } from 'lucide-react';
 
+const Inpage_Navigation = ({ currentPage, setCurrentPage }) => (
+  <nav className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
+    <div className="max-w-7xl mx-auto flex justify-between items-center">
+      <h2 className="text-xl font-semibold text-gray-800">Health2Data</h2>
+      <div className="flex space-x-4">
+        <button 
+          onClick={() => setCurrentPage('welcome')}
+          className={`px-4 py-2 rounded-lg ${currentPage === 'welcome' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
+        >
+          Welcome
+        </button>
+        <button 
+          onClick={() => setCurrentPage('assistant')}
+          className={`px-4 py-2 rounded-lg ${currentPage === 'assistant' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
+        >
+          Assistant
+        </button>
+      </div>
+    </div>
+  </nav>
+);
+
+
 const WelcomePage = ({ setCurrentPage, chatHistory }) => {
   const [activeTab, setActiveTab] = useState('chats');
   const [selectedContent, setSelectedContent] = useState([]);
   const [currentPrompt, setCurrentPrompt] = useState('');
 
-  const [patientRecords] = useState([
+  const [patientRecords, setpatientRecords] = useState([
     { id: 1, name: 'John Doe - Medical History', type: 'record', description: 'Complete medical history' },
     { id: 2, name: 'Jane Smith - Lab Results', type: 'record', description: 'Recent blood work analysis' },
   ]);
   
-  const [clinicalGuides] = useState([
+  const [clinicalGuides, setclinicalGuides] = useState([
     { id: 1, name: 'Diabetes Treatment Protocol', type: 'guide', description: 'Standard treatment guidelines' },
     { id: 2, name: 'Hypertension Management', type: 'guide', description: 'Clinical best practices' },
   ]);
+
+  const displayChatHistory = chatHistory.length > 0 ? chatHistory : chatHistory;
 
   const handleContentSelect = (item) => {
     const itemKey = `${item.type}-${item.id}`;
@@ -36,7 +61,7 @@ const WelcomePage = ({ setCurrentPage, chatHistory }) => {
     let selectedItem = null;
     
     if (activeTab === 'chats') {
-      chatHistory.forEach(chat => {
+      displayChatHistory.forEach(chat => {
         if (selectedContent.includes(`chat-${chat.id}`)) {
           selectedItem = chat.title;
         }
@@ -80,7 +105,7 @@ const WelcomePage = ({ setCurrentPage, chatHistory }) => {
             </p>
             <button
               onClick={() => setCurrentPage('assistant')}
-              className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-medium hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl"
+              className="bg-black text-white px-8 py-4 rounded-lg text-lg font-medium hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl"
             >
               Get Started
             </button>
@@ -114,61 +139,93 @@ const WelcomePage = ({ setCurrentPage, chatHistory }) => {
               </button>
             </div>
 
-            <div className="min-h-[300px] mb-6">
-              {activeTab === 'chats' && (
-                <div className="space-y-3">
-                  {chatHistory.map((chat) => (
-                    <div 
-                      key={chat.id} 
-                      onClick={() => handleContentSelect({ ...chat, type: 'chat' })}
-                      className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                        isSelected({ ...chat, type: 'chat' }) ? 'bg-blue-50 border-blue-500 shadow-md' : 'hover:bg-gray-50 border-gray-200'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="flex items-start space-x-3 flex-1">
-                          <input type="radio" name="content-selection" checked={isSelected({ ...chat, type: 'chat' })} onChange={() => {}} className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500" />
-                          <div>
-                            <h4 className="font-medium text-gray-900">{chat.title}</h4>
-                            <p className="text-sm text-gray-600">{chat.description}</p>
-                            <p className="text-xs text-gray-400 mt-1">{chat.timestamp}</p>
+            <div className="max-h-[400px] min-h-[400px] mb-6 overflow-y-auto border border-gray-100 rounded-lg">
+               <div className="p-4 flex-1">
+                {activeTab === 'chats' && (
+                  <div className="space-y-3">
+                    {displayChatHistory.map((chat) => (
+                      <div 
+                        key={chat.id} 
+                        onClick={() => handleContentSelect({ ...chat, type: 'chat' })}
+                        className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                          isSelected({ ...chat, type: 'chat' }) ? 'bg-blue-50 border-blue-500 shadow-md' : 'hover:bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex items-start space-x-3 flex-1">
+                            <input 
+                              type="radio" 
+                              name="content-selection" 
+                              checked={isSelected({ ...chat, type: 'chat' })} 
+                              onChange={() => {}} 
+                              className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500" 
+                            />
+                            <div>
+                              <h4 className="font-medium text-gray-900">{chat.title}</h4>
+                              <p className="text-sm text-gray-600">{chat.description}</p>
+                              <p className="text-xs text-gray-400 mt-1">{chat.timestamp}</p>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {activeTab === 'records' && (
-                <div className="space-y-3">
-                  {patientRecords.map((record) => (
-                    <div key={record.id} onClick={() => handleContentSelect(record)} className={`border rounded-lg p-4 cursor-pointer transition-all ${isSelected(record) ? 'bg-blue-50 border-blue-500 shadow-md' : 'hover:bg-gray-50 border-gray-200'}`}>
-                      <div className="flex items-start space-x-3">
-                        <input type="radio" name="content-selection" checked={isSelected(record)} onChange={() => {}} className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500" />
-                        <div>
-                          <h4 className="font-medium text-gray-900">{record.name}</h4>
-                          <p className="text-sm text-gray-600">{record.description}</p>
+                    ))}
+                  </div>
+                )}
+                {activeTab === 'records' && (
+                  <div className="space-y-3">
+                    {patientRecords.map((record) => (
+                      <div 
+                        key={record.id} 
+                        onClick={() => handleContentSelect(record)} 
+                        className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                          isSelected(record) ? 'bg-blue-50 border-blue-500 shadow-md' : 'hover:bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-start space-x-3">
+                          <input 
+                            type="radio" 
+                            name="content-selection" 
+                            checked={isSelected(record)} 
+                            onChange={() => {}} 
+                            className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500" 
+                          />
+                          <div>
+                            <h4 className="font-medium text-gray-900">{record.name}</h4>
+                            <p className="text-sm text-gray-600">{record.description}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {activeTab === 'guides' && (
-                <div className="space-y-3">
-                  {clinicalGuides.map((guide) => (
-                    <div key={guide.id} onClick={() => handleContentSelect(guide)} className={`border rounded-lg p-4 cursor-pointer transition-all ${isSelected(guide) ? 'bg-blue-50 border-blue-500 shadow-md' : 'hover:bg-gray-50 border-gray-200'}`}>
-                      <div className="flex items-start space-x-3">
-                        <input type="radio" name="content-selection" checked={isSelected(guide)} onChange={() => {}} className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500" />
-                        <div>
-                          <h4 className="font-medium text-gray-900">{guide.name}</h4>
-                          <p className="text-sm text-gray-600">{guide.description}</p>
+                    ))}
+                  </div>
+                )}
+                {activeTab === 'guides' && (
+                  <div className="space-y-3">
+                    {clinicalGuides.map((guide) => (
+                      <div 
+                        key={guide.id} 
+                        onClick={() => handleContentSelect(guide)} 
+                        className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                          isSelected(guide) ? 'bg-blue-50 border-blue-500 shadow-md' : 'hover:bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-start space-x-3">
+                          <input 
+                            type="radio" 
+                            name="content-selection" 
+                            checked={isSelected(guide)} 
+                            onChange={() => {}} 
+                            className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500" 
+                          />
+                          <div>
+                            <h4 className="font-medium text-gray-900">{guide.name}</h4>
+                            <p className="text-sm text-gray-600">{guide.description}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="relative">
@@ -180,7 +237,10 @@ const WelcomePage = ({ setCurrentPage, chatHistory }) => {
                 placeholder={selectedContent.length > 0 ? 'Ask a question about selected content...' : 'Prompt: Filter Doc, Search History, Analysis'}
                 className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <button onClick={handlePromptSubmit} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-blue-600 hover:text-blue-700">
+              <button 
+                onClick={handlePromptSubmit} 
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-blue-600 hover:text-blue-700"
+              >
                 <Send className="w-5 h-5" />
               </button>
             </div>

@@ -56,30 +56,36 @@ const AssistantPage = ({ setCurrentPage, chatHistory, messages, setMessages }) =
         <Sidebar chatHistory={chatHistory} />
         
         <div className="flex-1 flex flex-col">
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {/* Messages area */}
+          <div className="flex-1 overflow-y-auto p-6">
             {messages.length === 0 ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center">
+              <div className="flex flex-col items-center justify-center h-full">
+                <div className="text-center mb-6">
                   <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <p className="text-gray-500">Start a conversation by asking a question</p>
                 </div>
               </div>
             ) : (
-              messages.map((message) => (
-                <ChatMessage 
-                  key={message.id} 
-                  message={message} 
-                  onShowSources={showSources}
-                />
-              ))
+              <div className="space-y-4 pb-4">
+                {messages.map((message) => (
+                  <ChatMessage 
+                    key={message.id} 
+                    message={message} 
+                    onShowSources={showSources}
+                  />
+                ))}
+              </div>
             )}
           </div>
 
-          <PromptInput 
-            value={currentPrompt}
-            onChange={setCurrentPrompt}
-            onSubmit={handleSendMessage}
-          />
+          {/* Fixed input area at bottom */}
+          <div className="bg-gray-50">
+            <PromptInput 
+              value={currentPrompt}
+              onChange={setCurrentPrompt}
+              onSubmit={handleSendMessage}
+            />
+          </div>
         </div>
       </div>
 
