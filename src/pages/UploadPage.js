@@ -60,6 +60,9 @@ const UploadPage = ({ setCurrentPage, selectedFiles, setSelectedFiles }) => {
     const bucketName = process.env.REACT_APP_S3_BUCKET_NAME || 'your-bucket-name';
     
     try {
+      const completedUploads = [];
+      const failedUploads = [];
+
       // Upload files one by one
       for (const fileInfo of selectedFilesToUpload) {
         // Update status to uploading
@@ -83,22 +86,24 @@ const UploadPage = ({ setCurrentPage, selectedFiles, setSelectedFiles }) => {
               s3Location: result.location
             } : f
           ));
+          completedUploads.push(fileInfo);
         } else {
           // Update status to failed
           setSelectedFiles(prev => prev.map(f => 
             f.id === fileInfo.id ? {...f, uploadStatus: 'failed', error: result.error} : f
           ));
+          failedUploads.push(fileInfo);
         }
       }
       
-      const successCount = selectedFiles.filter(f => f.uploadStatus === 'completed').length;
-      const failCount = selectedFiles.filter(f => f.uploadStatus === 'failed').length;
+      // const successCount = selectedFiles.filter(f => f.uploadStatus === 'completed').length;
+      // const failCount = selectedFiles.filter(f => f.uploadStatus === 'failed').length;
       
-      if (failCount === 0) {
-        alert(`All ${successCount} file(s) uploaded successfully to S3!`);
+      if (failedUploads.length === 0) {
+        alert(`All ${completedUploads.length} file(s) uploaded successfully to S3!`);
         setCurrentPage('assistant');
       } else {
-        alert(`${successCount} files uploaded successfully, ${failCount} failed. Check console for details.`);
+        alert(`${completedUploads.length} files uploaded successfully, ${failedUploads.length} failed. Check console for details.`);
       }
       
     } catch (error) {
