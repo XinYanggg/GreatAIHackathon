@@ -2,15 +2,27 @@ import React, { useState } from 'react';
 import Navigation from '../components/Navigation';
 import FileUploadZone from '../components/FileUploadZone';
 import FileList from '../components/FileList';
+import { uploadFileToS3 } from '../utils/s3Upload';
+import { useEffect } from 'react';
 
 const UploadPage = ({ setCurrentPage, selectedFiles, setSelectedFiles }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragCounter, setDragCounter] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  // const [uploadProgress, setUploadProgress] = useState({});
 
+  useEffect(()=> {
+    console.log('AWS_ACCESS_KEY_ID:', process.env.REACT_APP_AWS_ACCESS_KEY_ID ? 'Found' : 'Missing');
+    console.log('AWS_SECRET_ACCESS_KEY:', process.env.REACT_APP_AWS_SECRET_ACCESS_KEY ? 'Found' : 'Missing');
+    console.log('AWS_REGION:', process.env.REACT_APP_AWS_REGION || 'us-east-1');
+    console.log('S3 BUCKET:', process.env.REACT_APP_S3_BUCKET_NAME ? 'Found': 'Missing');
+  })
+  
+
+  // Your existing processFiles, handleFileSelect, drag handlers remain the same...
   const processFiles = (files) => {
     const fileArray = Array.from(files);
     const validFiles = fileArray.filter(file => {
-      // Check file type
       const validTypes = ['.pdf', '.doc', '.docx', '.txt'];
       const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
       return validTypes.includes(fileExtension);
@@ -27,15 +39,74 @@ const UploadPage = ({ setCurrentPage, selectedFiles, setSelectedFiles }) => {
         size: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
         type: file.type,
         selected: true,
-        file: file // Store the actual file object if needed later
+        file: file,
+        uploadStatus: 'pending' // Add upload status tracking
       }));
 
       setSelectedFiles([...selectedFiles, ...newFiles]);
     }
   };
 
-  const handleFileSelect = (e) => {
-    processFiles(e.target.files);
+  // Upload handler with S3 integration
+  const handleUpload = async () => {
+    const selectedFilesToUpload = selectedFiles.filter(f => f.selected);
+    
+    if (selectedFilesToUpload.length === 0) {
+      alert('Please select at least one file to upload');
+      return;
+    }
+
+    setIsUploading(true);
+    const bucketName = process.env.REACT_APP_S3_BUCKET_NAME || 'your-bucket-name';
+    
+    try {
+      // Upload files one by one
+      for (const fileInfo of selectedFilesToUpload) {
+        // Update status to uploading
+        setSelectedFiles(prev => prev.map(f => 
+          f.id === fileInfo.id ? {...f, uploadStatus: 'uploading'} : f
+        ));
+
+        // Generate unique filename to avoid conflicts
+        const timestamp = Date.now();
+        const fileName = `${timestamp}_${fileInfo.file.name}`;
+        
+        const result = await uploadFileToS3(fileInfo.file, bucketName, fileName);
+        
+        if (result.success) {
+          // Update status to completed
+          setSelectedFiles(prev => prev.map(f => 
+            f.id === fileInfo.id ? {
+              ...f, 
+              uploadStatus: 'completed',
+              s3Key: result.key,
+              s3Location: result.location
+            } : f
+          ));
+        } else {
+          // Update status to failed
+          setSelectedFiles(prev => prev.map(f => 
+            f.id === fileInfo.id ? {...f, uploadStatus: 'failed', error: result.error} : f
+          ));
+        }
+      }
+      
+      const successCount = selectedFiles.filter(f => f.uploadStatus === 'completed').length;
+      const failCount = selectedFiles.filter(f => f.uploadStatus === 'failed').length;
+      
+      if (failCount === 0) {
+        alert(`All ${successCount} file(s) uploaded successfully to S3!`);
+        setCurrentPage('assistant');
+      } else {
+        alert(`${successCount} files uploaded successfully, ${failCount} failed. Check console for details.`);
+      }
+      
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('Upload failed: ' + error.message);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleDragEnter = (e) => {
@@ -72,16 +143,8 @@ const UploadPage = ({ setCurrentPage, selectedFiles, setSelectedFiles }) => {
     }
   };
 
-  const handleUpload = () => {
-    const selectedFilesToUpload = selectedFiles.filter(f => f.selected);
-    
-    if (selectedFilesToUpload.length === 0) {
-      alert('Please select at least one file to upload');
-      return;
-    }
-    
-    alert(`${selectedFilesToUpload.length} file(s) uploaded successfully!`);
-    setCurrentPage('assistant');
+  const handleFileSelect = (e) => {
+    processFiles(e.target.files);
   };
 
   const handleRemove = (id) => {
@@ -129,12 +192,19 @@ const UploadPage = ({ setCurrentPage, selectedFiles, setSelectedFiles }) => {
               {/* Action Buttons */}
               <div className="mt-6 flex space-x-4">
                 <button 
-                  className="bg-blue-600 text-white px-8 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors" 
+                  className={`px-8 py-3 rounded-lg font-medium transition-colors ${
+                    isUploading 
+                      ? 'bg-gray-400 cursor-not-allowed' 
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  } text-white`}
                   onClick={handleUpload}
+                  disabled={isUploading}
                 >
-                  UPLOAD
+                  {isUploading ? 'UPLOADING...' : 'UPLOAD'}
                 </button>
-                <label className="border-2 border-gray-300 text-gray-700 px-8 py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors cursor-pointer">
+                <label className={`border-2 border-gray-300 text-gray-700 px-8 py-3 rounded-lg font-medium transition-colors cursor-pointer ${
+                  isUploading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+                }`}>
                   Add More Files
                   <input
                     type="file"
@@ -142,11 +212,18 @@ const UploadPage = ({ setCurrentPage, selectedFiles, setSelectedFiles }) => {
                     onChange={handleFileSelect}
                     className="hidden"
                     accept=".pdf,.doc,.docx,.txt"
+                    disabled={isUploading}
                   />
                 </label>
               </div>
+              
+              {isUploading && (
+                <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-700">Uploading files to S3...</p>
+                </div>
+              )}
             </div>
-            
+
             {/* Right Side - Upload Zone */}
             <div className="lg:sticky lg:top-6 h-fit">
               <FileUploadZone onFileSelect={handleFileSelect} />
