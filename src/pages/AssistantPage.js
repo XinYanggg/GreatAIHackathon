@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect,useRef } from 'react';
 import { MessageSquare } from 'lucide-react';
 import Navigation from '../components/Navigation';
 import Sidebar from '../components/Sidebar';
@@ -15,29 +15,104 @@ import {
   generateChatTitle,
 } from '../utils/chatSessionsAPI';
 
-const AssistantPage = ({ setCurrentPage, chatHistory, messages, setMessages }) => {
+const AssistantPage = ({ 
+  setCurrentPage, 
+  messages, 
+  setMessages,
+  initialSessionId = null,
+  initialQuery = null,
+  queryType = 'general',
+  onContextUsed = null,
+}) => {
   const [currentPrompt, setCurrentPrompt] = useState('');
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [currentSources, setCurrentSources] = useState([]);
   const [userId] = useState('user-123'); // Replace with actual user ID from auth
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState(null);
   
   // Session management states
   const [chatSessions, setChatSessions] = useState([]);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [loadingSessions, setLoadingSessions] = useState(true);
-
-  // Load all chat sessions on component mount
+  // Use refs to prevent duplicate processing
+  const contextProcessedRef = useRef(false);
+  const initializedRef = useRef(false);
+  
+  // Load all chat sessions on component mount (only once)
   useEffect(() => {
-    loadChatSessions();
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      loadChatSessions();
+    }
   }, []);
+
+  // Handle initial context from WelcomePage (only once)
+  useEffect(() => {
+    if (chatSessions.length > 0 && !contextProcessedRef.current && 
+        (initialSessionId || initialQuery || selectedDocument)) {
+      contextProcessedRef.current = true;
+      handleInitialContext();
+    }
+  }, [chatSessions, initialSessionId, initialQuery, selectedDocument]);
+
+  // Load messages when session changes (but not on initial mount)
+  useEffect(() => {
+    if (currentSessionId && !initialSessionId && contextProcessedRef.current) {
+      loadSessionMessages(currentSessionId);
+    }
+  }, [currentSessionId]);
+
+  /**
+   * Handle initial context from WelcomePage navigation
+   */
+  const handleInitialContext = async () => {
+    try {
+      if (initialSessionId) {
+        // Load existing session
+        setCurrentSessionId(initialSessionId);
+        await loadSessionMessages(initialSessionId);
+        
+        // If there's also an initial query, send it
+        if (initialQuery) {
+          setCurrentPrompt(initialQuery);
+          setTimeout(() => {
+            handleSendMessage(initialQuery);
+          }, 500);
+        }
+      } else if (selectedDocument && initialQuery) {
+        // Create new session for document query
+        const newSession = await createNewChat();
+        console.log('docq');
+        if (newSession) {
+          // Send query with document context
+          setTimeout(() => {
+            handleSendMessage(initialQuery, selectedDocument);
+          }, 500);
+        }
+      } else if (initialQuery) {
+        // Just a query without session or document
+        const newSession = await createNewChat();
+        if (newSession) {
+          setTimeout(() => {
+            handleSendMessage(initialQuery);
+          }, 500);
+        }
+      }
+      
+      // Clear context after processing
+      if (onContextUsed) {
+        onContextUsed();
+      }
+    } catch (error) {
+      console.error('Error handling initial context:', error);
+    }
+  };
 
   // Load messages when session changes
   useEffect(() => {
-    if (currentSessionId) {
+    if (currentSessionId && !initialSessionId) {
       loadSessionMessages(currentSessionId);
-    } else {
-      setMessages([]);
     }
   }, [currentSessionId]);
 
@@ -49,7 +124,6 @@ const AssistantPage = ({ setCurrentPage, chatHistory, messages, setMessages }) =
     try {
       const sessions = await getUserChatSessions(userId);
       
-      // Transform to match the expected format for Sidebar
       const formattedSessions = sessions.map(session => ({
         id: session.sessionId,
         title: session.title || 'New Chat',
@@ -61,11 +135,12 @@ const AssistantPage = ({ setCurrentPage, chatHistory, messages, setMessages }) =
       
       setChatSessions(formattedSessions);
       
-      // If no current session, create a new one
-      if (!currentSessionId && formattedSessions.length === 0) {
-        await createNewChat();
-      } else if (!currentSessionId && formattedSessions.length > 0) {
-        // Select the most recent chat
+      // Only auto-select if no initial session provided
+      if (!initialSessionId && !initialQuery && !selectedDocument) {
+        if (sessions.length === 0) {
+          await createNewChat();
+        }
+      } else if (!initialSessionId && !currentSessionId && formattedSessions.length > 0) {
         setCurrentSessionId(formattedSessions[0].id);
       }
     } catch (error) {
@@ -82,7 +157,6 @@ const AssistantPage = ({ setCurrentPage, chatHistory, messages, setMessages }) =
     try {
       const sessionMessages = await getSessionMessages(userId, sessionId);
       
-      // Convert to message format expected by ChatMessage component
       const formattedMessages = sessionMessages.flatMap(item => [
         {
           id: `${item.messageId}-user`,
@@ -112,9 +186,9 @@ const AssistantPage = ({ setCurrentPage, chatHistory, messages, setMessages }) =
    */
   const createNewChat = async () => {
     try {
+      console.log('Creating new chat session...');
       const newSession = await createChatSession(userId, 'New Chat');
       
-      // Add to sessions list
       const formattedSession = {
         id: newSession.sessionId,
         title: newSession.title,
@@ -149,11 +223,9 @@ const AssistantPage = ({ setCurrentPage, chatHistory, messages, setMessages }) =
     try {
       await deleteChatSession(userId, sessionId);
       
-      // Remove from local state
       const updatedSessions = chatSessions.filter(s => s.id !== sessionId);
       setChatSessions(updatedSessions);
       
-      // If deleted current session, select another or create new
       if (sessionId === currentSessionId) {
         if (updatedSessions.length > 0) {
           setCurrentSessionId(updatedSessions[0].id);
@@ -169,10 +241,10 @@ const AssistantPage = ({ setCurrentPage, chatHistory, messages, setMessages }) =
   /**
    * Handle sending a message
    */
-  const handleSendMessage = async () => {
-    if (!currentPrompt.trim()) return;
+  const handleSendMessage = async (queryText = null, documentContext = null) => {
+    const messageText = queryText || currentPrompt;
+    if (!messageText.trim()) return;
     
-    // If no current session, create one
     let sessionId = currentSessionId;
     if (!sessionId) {
       sessionId = await createNewChat();
@@ -181,39 +253,52 @@ const AssistantPage = ({ setCurrentPage, chatHistory, messages, setMessages }) =
     
     const newMessage = {
       id: Date.now(),
-      text: currentPrompt,
+      text: messageText,
       type: 'user',
       timestamp: new Date().toLocaleTimeString(),
     };
     
-    // Add user message to UI immediately
     setMessages([...messages, newMessage]);
     setIsLoading(true);
     
-    const userQuery = currentPrompt;
+    const userQuery = messageText;
     const isFirstMessage = messages.length === 0;
-    setCurrentPrompt('');
+    const document = documentContext || selectedDocument;
     
-    // Simulate AI processing (replace with actual AI call)
+    if (!queryText) {
+      setCurrentPrompt('');
+    }
+    
+    // Simulate AI processing - REPLACE WITH YOUR ACTUAL AI SERVICE
     setTimeout(async () => {
+      let aiResponseText = 'Based on the medical documents analyzed, here is the information you requested...';
+      let sources = [
+        'Clinical_Guidelines_2024.pdf',
+        'Patient_Treatment_Protocol.pdf',
+        'Medical_Research_Study.pdf',
+      ];
+      let fileRefs = [
+        { fileId: 'doc-001', fileName: 'Clinical_Guidelines_2024.pdf' },
+        { fileId: 'doc-002', fileName: 'Patient_Treatment_Protocol.pdf' },
+      ];
+      
+      // If querying a specific document, customize the response
+      if (document) {
+        aiResponseText = `Based on the ${document.type === 'record' ? 'patient record' : 'clinical guide'} "${document.name}", here is the information about "${userQuery}":\n\n${document.description}\n\nThis is a simulated response. Replace with your actual AI service that queries the specific document.`;
+        sources = [document.name];
+        fileRefs = [{ fileId: document.fileId, fileName: document.name }];
+      }
+      
       const aiResponse = {
-        text: 'Based on the medical documents analyzed, here is the information you requested...',
+        text: aiResponseText,
         timestamp: new Date().toISOString(),
-        sources: [
-          'Clinical_Guidelines_2024.pdf',
-          'Patient_Treatment_Protocol.pdf',
-          'Medical_Research_Study.pdf',
-        ],
-        fileReferences: [
-          { fileId: 'doc-001', fileName: 'Clinical_Guidelines_2024.pdf' },
-          { fileId: 'doc-002', fileName: 'Patient_Treatment_Protocol.pdf' },
-        ],
-        queryType: 'document_search',
+        sources: sources,
+        fileReferences: fileRefs,
+        queryType: document ? 'document_query' : queryType,
         processingTimeMs: 1000,
         confidenceScore: 0.92,
       };
       
-      // Add AI response to UI
       const aiMessage = {
         id: Date.now() + 1,
         ...aiResponse,
@@ -223,22 +308,18 @@ const AssistantPage = ({ setCurrentPage, chatHistory, messages, setMessages }) =
       setMessages([...messages, newMessage, aiMessage]);
       
       try {
-        // Store message in DynamoDB
         await storeSessionMessage(userId, sessionId, userQuery, aiResponse);
         
-        // If this is the first message, update the chat title
         if (isFirstMessage) {
           const title = generateChatTitle(userQuery);
           await updateChatSession(userId, sessionId, { title });
           
-          // Update local state
           setChatSessions(chatSessions.map(session => 
             session.id === sessionId 
               ? { ...session, title, description: userQuery, timestamp: 'Just now' }
               : session
           ));
         } else {
-          // Update the last message in sidebar
           setChatSessions(chatSessions.map(session => 
             session.id === sessionId 
               ? { ...session, description: userQuery, timestamp: 'Just now' }
@@ -260,10 +341,8 @@ const AssistantPage = ({ setCurrentPage, chatHistory, messages, setMessages }) =
     setShowSourceModal(true);
   };
 
-  /**
-   * Convert ISO timestamp to relative time
-   */
   const getRelativeTime = (timestamp) => {
+    if (!timestamp) return 'Unknown';
     const now = new Date();
     const time = new Date(timestamp);
     const diffMs = now - time;
@@ -292,12 +371,37 @@ const AssistantPage = ({ setCurrentPage, chatHistory, messages, setMessages }) =
         />
         
         <div className="flex-1 flex flex-col">
+          {/* Document Context Banner */}
+          {selectedDocument && (
+            <div className="bg-blue-50 border-b border-blue-200 px-6 py-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-blue-900">
+                    Querying: {selectedDocument.name}
+                  </p>
+                  <p className="text-xs text-blue-700">{selectedDocument.description}</p>
+                </div>
+                <button
+                  onClick={() => setSelectedDocument(null)}
+                  className="text-blue-600 hover:text-blue-800 text-sm"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             {messages.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
                   <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500">Start a conversation by asking a question</p>
+                  <p className="text-gray-500">
+                    {selectedDocument 
+                      ? `Ask questions about ${selectedDocument.name}`
+                      : 'Start a conversation by asking a question'
+                    }
+                  </p>
                 </div>
               </div>
             ) : (
@@ -320,7 +424,7 @@ const AssistantPage = ({ setCurrentPage, chatHistory, messages, setMessages }) =
           <PromptInput 
             value={currentPrompt}
             onChange={setCurrentPrompt}
-            onSubmit={handleSendMessage}
+            onSubmit={() => handleSendMessage()}
             disabled={isLoading}
           />
         </div>

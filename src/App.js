@@ -8,22 +8,56 @@ const App = () => {
   const [currentPage, setCurrentPage] = useState('welcome');
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [messages, setMessages] = useState([]);
+  
+  // Session and document context for navigation
+  const [selectedSessionId, setSelectedSessionId] = useState(null);
+  const [initialQuery, setInitialQuery] = useState(null);
+  const [selectedDocument, setSelectedDocument] = useState(null);
+  const [queryType, setQueryType] = useState('general');
 
-  // Note: chatHistory is now managed within AssistantPage component
-  // This dummy data is only for WelcomePage display
-  const [chatHistory] = useState([
-    { id: 1, title: 'History 1', description: 'Patient diagnosis query', timestamp: '2 hours ago' },
-    { id: 2, title: 'History 2', description: 'Treatment protocol search', timestamp: '1 day ago' },
-    { id: 3, title: 'History 3', description: 'Medication interaction check', timestamp: '2 days ago' },
-    { id: 4, title: 'History 4', description: 'Clinical guidelines review', timestamp: '1 week ago' },
-  ]);
+  /**
+   * Handle selecting a chat session from WelcomePage
+   * @param {string} sessionId - The session ID to load
+   * @param {string} query - Optional initial query to send
+   */
+  const handleSelectSession = (sessionId, query = null) => {
+    setSelectedSessionId(sessionId);
+    setInitialQuery(query);
+    setSelectedDocument(null);
+    setQueryType('general');
+  };
+
+  /**
+   * Handle querying a specific document from WelcomePage
+   * @param {object} document - The document to query (patient record or clinical guide)
+   * @param {string} query - The query to send
+   * @param {string} type - The query type ('document_query' or 'general')
+   */
+  const handleQueryDocument = (document, query, type = 'document_query') => {
+    setSelectedDocument(document);
+    setInitialQuery(query);
+    setQueryType(type);
+    setSelectedSessionId(null); // Create new session for document queries
+  };
+
+  /**
+   * Reset context when navigating back to welcome
+   */
+  const handleNavigateToWelcome = () => {
+    setSelectedSessionId(null);
+    setInitialQuery(null);
+    setSelectedDocument(null);
+    setQueryType('general');
+    setCurrentPage('welcome');
+  };
 
   return (
     <div>
       {currentPage === 'welcome' && (
         <WelcomePage 
           setCurrentPage={setCurrentPage}
-          chatHistory={chatHistory}
+          onSelectSession={handleSelectSession}
+          onQueryDocument={handleQueryDocument}
         />
       )}
       {currentPage === 'upload' && (
@@ -36,9 +70,20 @@ const App = () => {
       {currentPage === 'assistant' && (
         <AssistantPage 
           setCurrentPage={setCurrentPage}
-          chatHistory={chatHistory} // Passed but not used - managed internally
           messages={messages}
           setMessages={setMessages}
+          // Pass navigation context
+          initialSessionId={selectedSessionId}
+          initialQuery={initialQuery}
+          selectedDocument={selectedDocument}
+          queryType={queryType}
+          // Clear context after use
+          onContextUsed={() => {
+            setSelectedSessionId(null);
+            setInitialQuery(null);
+            setSelectedDocument(null);
+            setQueryType('general');
+          }}
         />
       )}
     </div>
