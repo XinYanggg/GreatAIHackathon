@@ -107,22 +107,10 @@ class MedicalQueryAPI {
    */
   async askBedrock(query, options = {}) {
     try {
-      console.log('Sending query to Bedrock Agent:', query);
+      console.log('Sending query to Bedrock Knowledge Base:', query);
 
-      // Prepare the input for your Bedrock Agent
-      const input = {
-        agentId: this.agentId,
-        agentAliasId: this.agentAliasId,
-        sessionId: options.sessionId || this.generateSessionId(),
-        inputText: query,
-        // Add any additional parameters your agent expects
-        ...(options.filters && {
-          sessionAttributes: options.filters,
-        }),
-      };
-
-      // Use BedrockAgent client for agents
-      const { BedrockAgentRuntimeClient, InvokeAgentCommand } = await import(
+      // Method 1: Use RetrieveAndGenerate API directly
+      const { BedrockAgentRuntimeClient, RetrieveAndGenerateCommand } = await import(
         '@aws-sdk/client-bedrock-agent-runtime'
       );
 
@@ -134,62 +122,104 @@ class MedicalQueryAPI {
         },
       });
 
-      const command = new InvokeAgentCommand(input);
+      // Prepare the RetrieveAndGenerate input
+      const input = {
+        input: {
+          text: query,
+        },
+        retrieveAndGenerateConfiguration: {
+          type: 'KNOWLEDGE_BASE',
+          knowledgeBaseConfiguration: {
+            knowledgeBaseId: process.env.REACT_APP_KNOWLEDGE_BASE_ID, // Add this to your .env
+            modelArn: `arn:aws:bedrock:${process.env.REACT_APP_AWS_REGION || 'us-east-1'}::foundation-model/amazon.nova-micro-v1:0`,
+            retrievalConfiguration: {
+              vectorSearchConfiguration: {
+                numberOfResults: 5, // Number of source documents to retrieve
+                overrideSearchType: 'HYBRID', // Options: 'HYBRID', 'SEMANTIC'
+              },
+            },
+            generationConfiguration: {
+              inferenceConfig: {
+                textInferenceConfig: {
+                  maxTokens: 2048,
+                  temperature: 0.5,
+                  topP: 0.9,
+                },
+              },
+            },
+          },
+        },
+      };
+
+      const command = new RetrieveAndGenerateCommand(input);
       const response = await agentClient.send(command);
 
-      // Process the streaming response
-      let fullResponse = '';
+      // Extract the answer
+      const fullResponse = response.output?.text || '';
+
+      // Extract sources/citations - THIS WILL ALWAYS BE POPULATED
       const sources = [];
+      const detailedSources = [];
 
-      if (response.completion) {
-        for await (const chunk of response.completion) {
-          if (chunk.chunk?.bytes) {
-            const chunkText = new TextDecoder().decode(chunk.chunk.bytes);
-            fullResponse += chunkText;
-          }
+      if (response.citations) {
+        response.citations.forEach((citation) => {
+          citation.retrievedReferences?.forEach((reference) => {
+            const sourceInfo = {
+              uri: reference.location?.s3Location?.uri || '',
+              content: reference.content?.text || '',
+              metadata: reference.metadata || {},
+            };
 
-          // Extract citations/sources if available
-          if (
-            chunk.trace?.orchestrationTrace?.observation
-              ?.knowledgeBaseLookupOutput
-          ) {
-            const citations =
-              chunk.trace.orchestrationTrace.observation
-                .knowledgeBaseLookupOutput.retrievedReferences;
-            citations?.forEach((citation) => {
-              if (citation.location?.s3Location) {
-                sources.push(citation.location.s3Location.key);
-              }
-            });
-          }
-        }
+            detailedSources.push(sourceInfo);
+
+            // Extract just the file path/key
+            if (reference.location?.s3Location?.uri) {
+              sources.push(reference.location.s3Location.uri);
+            }
+          });
+        });
       }
 
+      console.log(`Found ${detailedSources.length} source documents`);
+
       return {
-        answer:
-          fullResponse ||
-          'I apologize, but I could not generate a response to your query.',
+        answer: fullResponse || 'I apologize, but I could not generate a response to your query.',
         sources: [...new Set(sources)], // Remove duplicates
-        sessionId: input.sessionId,
-        sourceDocuments: sources.map((source) => ({ name: source })),
+        sessionId: response.sessionId || options.sessionId || this.generateSessionId(),
+        sourceDocuments: detailedSources.map((source) => ({
+          name: source.uri.split('/').pop() || source.uri,
+          path: source.uri,
+          excerpt: source.content.substring(0, 300) + '...',
+          metadata: source.metadata,
+          fullContent: source.content,
+        })),
         metadata: {
-          agentId: this.agentId,
-          modelUsed: this.modelId,
+          knowledgeBaseId: process.env.REACT_APP_KNOWLEDGE_BASE_ID,
+          modelUsed: 'amazon.nova-micro-v1:0',
           hasAnswer: fullResponse.length > 0,
-          numberOfSources: sources.length,
+          numberOfSources: detailedSources.length,
+          citationCount: response.citations?.length || 0,
         },
       };
     } catch (error) {
-      console.error('Bedrock Agent error:', error);
+      console.error('Bedrock Knowledge Base error:', error);
 
       // Add more context to common errors
       if (error.name === 'ThrottlingException') {
         throw new Error(
-          `Bedrock rate limit exceeded. Please wait a moment before trying again.`
+          'Bedrock rate limit exceeded. Please wait a moment before trying again.'
         );
       } else if (error.name === 'AccessDeniedException') {
         throw new Error(
-          `Access denied to Bedrock Agent. Please check your IAM permissions.`
+          'Access denied to Bedrock Knowledge Base. Please check your IAM permissions.'
+        );
+      } else if (error.name === 'ResourceNotFoundException') {
+        throw new Error(
+          'Knowledge Base not found. Please verify REACT_APP_KNOWLEDGE_BASE_ID in your environment variables.'
+        );
+      } else if (error.name === 'ValidationException') {
+        throw new Error(
+          'Invalid request parameters. Please check your Knowledge Base configuration.'
         );
       }
 

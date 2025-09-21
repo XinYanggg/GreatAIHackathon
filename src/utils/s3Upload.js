@@ -99,3 +99,59 @@ export const listS3Objects = async (bucketName) => {
     };
   }
 };
+
+export const getCitedSources = async (bucketName, uris) => {
+  try {
+    // List all objects in the bucket
+    const command = new ListObjectsV2Command({
+      Bucket: bucketName,
+    });
+    const response = await s3Client.send(command);
+
+    // Extract unique filenames from URIs
+    const uniqueFilenames = new Set();
+    uris.forEach(uri => {
+      if (uri.startsWith("s3://")) {
+        const parts = uri.replace("s3://", "").split("/");
+        if (parts.length >= 4) {
+          uniqueFilenames.add(parts[3]); // 4th element = filename
+        }
+      }
+    });
+
+    const pdfs = [];
+
+    // Go through S3 objects and filter by unique filenames
+    for (const item of (response.Contents || [])) {
+      if (item.Key.endsWith(".pdf")) {
+        const mappedFilename = item.Key.replace(/\.pdf$/i, "");
+
+        if (uniqueFilenames.has(mappedFilename)) {
+          const presignedResult = await generatePresignedUrl(bucketName, item.Key);
+
+          pdfs.push({
+            key: item.Key,
+            filename: mappedFilename,
+            url: presignedResult.success ? presignedResult.url : null,
+            size: item.Size,
+            lastModified: item.LastModified,
+            error: presignedResult.success ? null : presignedResult.error
+          });
+        }
+      }
+    }
+
+    return {
+      success: true,
+      data: pdfs
+    };
+  } catch (error) {
+    console.error("Error getting cited sources:", error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+

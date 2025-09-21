@@ -19,12 +19,23 @@ const SourceModal = ({ show, onClose, sources }) => {
         <div className="space-y-2 max-h-96 overflow-y-auto">
           {sources.map((source, idx) => (
             <div
-              key={idx}
+              key={source.key || idx}
               className="p-3 border rounded-lg hover:bg-gray-50 cursor-pointer flex items-center justify-between"
             >
               <div className="flex items-center space-x-3">
                 <FileText className="w-5 h-5 text-blue-600" />
-                <span className="text-gray-800">{source}</span>
+                <span
+                  className="text-blue-700 hover:underline cursor-pointer"
+                  onClick={e => {
+                    e.stopPropagation();
+                    if (source.url) {
+                      window.open(source.url, '_blank', 'noopener,noreferrer');
+                    }
+                  }}
+                  title={source.filename}
+                >
+                  {source.filename || source.key || 'Open PDF'}
+                </span>
               </div>
               <ChevronRight className="w-5 h-5 text-gray-400" />
             </div>
