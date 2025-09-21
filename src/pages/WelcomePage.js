@@ -267,11 +267,12 @@ const WelcomePage = ({ setCurrentPage, onSelectSession, onQueryDocument }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-green-50">
+    <div className="h-screen bg-gradient-to-br from-blue-50 to-green-50 flex flex-col">
       <Navigation currentPage="welcome" setCurrentPage={setCurrentPage} />
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="grid md:grid-cols-2 gap-8 items-center">
-          <div className="space-y-8">
+    <div className="flex-1 overflow-hidden">
+      <div className="max-w-7xl mx-auto px-6 py-12 h-full">
+        <div className="grid md:grid-cols-2 gap-8 items-center h-full">
+          <div className="space-y-8 flex flex-col items-center text-center">
             <div>
               <h1 className="text-6xl font-bold text-gray-900 mb-4">Welcome</h1>
               <h3 className="text-2xl text-gray-600">Health2Data</h3>
@@ -287,8 +288,8 @@ const WelcomePage = ({ setCurrentPage, onSelectSession, onQueryDocument }) => {
             </button>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-xl p-6">
-            <div className="flex space-x-2 mb-6 border-b">
+          <div className="bg-white rounded-2xl shadow-xl p-6 h-full flex flex-col">
+            <div className="flex space-x-2 mb-6 border-b flex-shrink-0">
               <button
                 onClick={() => { setActiveTab('records'); setSelectedContent([]); }}
                 className={`px-4 py-2 rounded-t-lg transition-colors ${
@@ -315,7 +316,7 @@ const WelcomePage = ({ setCurrentPage, onSelectSession, onQueryDocument }) => {
               </button>
             </div>
 
-            <div className="min-h-[300px] mb-6">
+            <div className="overflow-y-auto mb-0" style={{height: '500px'}}>
               {activeTab === 'chats' && (
                 <div className="space-y-3">
                   {loadingSessions ? (
@@ -334,8 +335,8 @@ const WelcomePage = ({ setCurrentPage, onSelectSession, onQueryDocument }) => {
                     </div>
                   ) : (
                     chatSessions.map((chat) => (
-                      <div 
-                        key={chat.id} 
+                      <div
+                        key={chat.id}
                         onClick={() => handleChatClick(chat)}
                         className={`border rounded-lg p-4 cursor-pointer transition-all ${
                           isSelected({ ...chat, type: 'chat' }) 
@@ -359,8 +360,8 @@ const WelcomePage = ({ setCurrentPage, onSelectSession, onQueryDocument }) => {
               {activeTab === 'records' && (
                 <div className="space-y-3">
                   {patientRecords.map((record) => (
-                    <div 
-                      key={record.id} 
+                    <div
+                      key={record.id}
                       onClick={() => handleContentSelect(record)}
                       className={`border rounded-lg p-4 cursor-pointer transition-all ${
                         isSelected(record) 
@@ -395,8 +396,8 @@ const WelcomePage = ({ setCurrentPage, onSelectSession, onQueryDocument }) => {
               {activeTab === 'guides' && (
                 <div className="space-y-3">
                   {clinicalGuides.map((guide) => (
-                    <div 
-                      key={guide.id} 
+                    <div
+                      key={guide.id}
                       onClick={() => handleContentSelect(guide)}
                       className={`border rounded-lg p-4 cursor-pointer transition-all ${
                         isSelected(guide) 
@@ -412,16 +413,18 @@ const WelcomePage = ({ setCurrentPage, onSelectSession, onQueryDocument }) => {
               )}
             </div>
 
+          {/* Fixed bottom section */}
+          <div className="flex-shrink-0 mt-auto">
             {/* Prompt Input */}
-            <div className="relative">
+            <div className="relative mb-2 mt-0">
               <input
                 type="text"
                 value={currentPrompt}
                 onChange={(e) => setCurrentPrompt(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handlePromptSubmit()}
                 placeholder={
-                  activeTab === 'chats' 
-                    ? "Ask a question or select a chat to continue..." 
+                  activeTab === 'chats'
+                    ? "Ask a question or select a chat to continue..."
                     : `Query the selected ${activeTab === 'records' ? 'patient record' : 'clinical guide'}...`
                 }
                 className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -436,7 +439,7 @@ const WelcomePage = ({ setCurrentPage, onSelectSession, onQueryDocument }) => {
             </div>
 
             {/* Helper Text */}
-            <div className="text-xs text-gray-500 text-center mt-2">
+            <div className="text-xs text-gray-500 text-center">
               {activeTab === 'chats' && (
                 <span>Select a chat and add a query, or just type to start a new conversation</span>
               )}
@@ -451,6 +454,8 @@ const WelcomePage = ({ setCurrentPage, onSelectSession, onQueryDocument }) => {
         </div>
       </div>
     </div>
+        </div>
+      </div>
   );
 };
 
