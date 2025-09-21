@@ -4,10 +4,15 @@ import { Sparkles } from 'lucide-react';
 const Navigation = ({ currentPage, setCurrentPage }) => (
   <nav className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
     <div className="max-w-7xl mx-auto flex items-center justify-between">
-      <div className="flex items-center space-x-2">
-        <Sparkles className="w-6 h-6 text-blue-600" />
-        <span className="text-xl font-bold text-gray-800">Health2Data</span>
-      </div>
+        {/* Logo and text clickable */}
+        <button
+            onClick={() => setCurrentPage('welcome')}
+            className="flex items-center space-x-2 focus:outline-none"
+        >
+          <Sparkles className="w-6 h-6 text-blue-600" />
+          <span className="text-xl font-bold text-gray-800">Health2Data</span>
+        </button>
+
       <div className="flex items-center space-x-6">
         <button
           onClick={() => setCurrentPage('upload')}

@@ -64,6 +64,13 @@ const AssistantPage = ({
     }
   }, [currentSessionId]);
 
+  // Load messages when session changes
+  useEffect(() => {
+    if (currentSessionId && !initialSessionId) {
+      loadSessionMessages(currentSessionId);
+    }
+  }, [currentSessionId]);
+
   /**
    * Handle initial context from WelcomePage navigation
    */
