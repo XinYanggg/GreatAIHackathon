@@ -263,53 +263,151 @@ const AssistantPage = ({
     }
     
     try {
-      // === INTEGRATION WITH MEDICAL QUERY API ===
+      console.log('=== CALLING MEDICAL QUERY API ===');
+      console.log('Query:', userQuery);
+      console.log('Document context:', document);
       
       // Prepare filters based on document context
       const filters = {};
-      if (document && document.fileId) {
-        filters.documentId = document.fileId;
+      
+      // Add document-specific filters
+      if (document) {
+        if (document.fileId || document.id) {
+          filters.documentId = document.fileId || document.id;
+        }
+        if (document.key) {
+          filters.documentKey = document.key; // S3 key if from uploaded files
+        }
+        if (document.name) {
+          filters.documentName = document.name;
+        }
+        if (document.type === 'record' && document.patientName) {
+          filters.patientName = document.patientName;
+        }
       }
-      if (document && document.type === 'record' && document.patientName) {
-        filters.patientName = document.patientName;
-      }
+      
+      // Add session context for conversation continuity
+      const options = {
+        filters,
+        sessionId: sessionId,
+        userId: userId,
+        queryType: document ? 'document_query' : 'general'
+      };
+      
+      console.log('API call options:', options);
       
       // Call the Medical Query API
-      const apiResponse = await medicalAPI.ask(userQuery, {
-        filters,
-        sessionId: sessionId
-      });
-      // Extract response data
-      const aiResponseText = apiResponse.answer || apiResponse.response || 'No response available';
+      const apiResponse = await medicalAPI.ask(userQuery, options);
       
-      // Extract sources/citations from the API response
-      const citations = apiResponse.citations || apiResponse.documents || [];
+      console.log('=== MEDICAL API RESPONSE ===');
+      console.log('Full response:', apiResponse);
       
-      // Format sources for the UI
-      const sources = citations.map(citation => 
-        citation.documentName || citation.fileName || citation.title || 'Unknown Document'
-      );
+      // Handle different response formats
+      let parsedResponse;
       
-      // Format file references
-      const fileRefs = citations.map(citation => ({
-        fileId: citation.documentId || citation.fileId || citation.id,
-        fileName: citation.documentName || citation.fileName || citation.title,
-        relevanceScore: citation.score || citation.relevance,
-        excerpt: citation.excerpt || citation.snippet
-      }));
+      if (apiResponse && typeof apiResponse.body === 'string') {
+        // AWS Lambda format with JSON string body
+        try {
+          parsedResponse = JSON.parse(apiResponse.body);
+          console.log('Parsed AWS Lambda body:', parsedResponse);
+        } catch (parseError) {
+          console.error('Failed to parse response body:', parseError);
+          throw new Error('Invalid response format from API');
+        }
+      } else if (apiResponse && apiResponse.body) {
+        // AWS Lambda format with object body
+        parsedResponse = apiResponse.body;
+        console.log('Using AWS Lambda body object:', parsedResponse);
+      } else {
+        // Direct response object
+        parsedResponse = apiResponse;
+        console.log('Using direct response:', parsedResponse);
+      }
       
-      // Create AI response object
+      // Extract the AI response text with multiple fallbacks
+      const aiResponseText = parsedResponse.answer || 
+                            parsedResponse.response || 
+                            parsedResponse.text || 
+                            parsedResponse.message || 
+                            'No response available from the medical AI system.';
+      
+      console.log('Extracted AI response:', aiResponseText);
+      
+      // Extract sources and citations
+      const sources = [];
+      const fileReferences = [];
+      
+      // Handle sourceDocuments array
+      if (parsedResponse.sourceDocuments && Array.isArray(parsedResponse.sourceDocuments)) {
+        parsedResponse.sourceDocuments.forEach(doc => {
+          if (typeof doc === 'string') {
+            sources.push(doc);
+          } else if (doc) {
+            const docName = doc.name || doc.title || doc.filename || doc.key || 'Unknown Document';
+            sources.push(docName);
+            fileReferences.push({
+              id: doc.id || doc.key || doc.filename,
+              name: docName,
+              type: doc.type || 'document',
+              url: doc.url || null
+            });
+          }
+        });
+      }
+      
+      // Handle citations array
+      if (parsedResponse.citations && Array.isArray(parsedResponse.citations)) {
+        parsedResponse.citations.forEach(citation => {
+          if (citation.sources && Array.isArray(citation.sources)) {
+            citation.sources.forEach(source => {
+              if (typeof source === 'string') {
+                sources.push(source);
+              } else if (source && (source.name || source.title)) {
+                sources.push(source.name || source.title);
+              }
+            });
+          }
+        });
+      }
+      
+      // Handle sources array (direct)
+      if (parsedResponse.sources && Array.isArray(parsedResponse.sources)) {
+        parsedResponse.sources.forEach(source => {
+          if (typeof source === 'string') {
+            sources.push(source);
+          } else if (source && (source.name || source.title)) {
+            sources.push(source.name || source.title);
+          }
+        });
+      }
+      
+      console.log('Extracted sources:', sources);
+      console.log('File references:', fileReferences);
+      
+      // Extract metadata
+      const metadata = parsedResponse.metadata || {};
+      
+      // Create comprehensive AI response object
       const aiResponse = {
         text: aiResponseText,
         timestamp: new Date().toISOString(),
-        sources: sources,
-        fileReferences: fileRefs,
-        queryType: document ? 'document_query' : queryType,
-        processingTimeMs: apiResponse.processingTime || apiResponse.responseTime,
-        confidenceScore: apiResponse.confidence || apiResponse.confidenceScore,
-        sessionId: apiResponse.sessionId || sessionId
+        sources: [...new Set(sources)], // Remove duplicates
+        fileReferences: fileReferences,
+        queryType: document ? 'document_query' : 'general',
+        processingTimeMs: metadata.processingTimeMs || null,
+        confidenceScore: metadata.confidence || metadata.confidenceScore || null,
+        modelUsed: metadata.modelUsed || null,
+        numberOfSources: metadata.numberOfSources || sources.length,
+        hasAnswer: metadata.hasAnswer !== false,
+        intent: parsedResponse.intent || null,
+        sessionId: parsedResponse.sessionId || sessionId,
+        // Additional medical-specific metadata
+        medicalCategories: parsedResponse.categories || [],
+        riskLevel: parsedResponse.riskLevel || null,
+        recommendations: parsedResponse.recommendations || [],
       };
       
+      // Create the AI message for display
       const aiMessage = {
         id: Date.now() + 1,
         ...aiResponse,
@@ -317,51 +415,69 @@ const AssistantPage = ({
         timestamp: new Date().toLocaleTimeString(),
       };
       
-      setMessages([...messages, newMessage, aiMessage]);
+      console.log('AI message for UI:', aiMessage);
       
-      // Store message in session
+      // Update messages state
+      setMessages(prevMessages => [...prevMessages, aiMessage]);
+      
+      // Store the conversation in DynamoDB
       try {
         await storeSessionMessage(userId, sessionId, userQuery, aiResponse);
         
+        // Update session metadata
         if (isFirstMessage) {
           const title = generateChatTitle(userQuery);
           await updateChatSession(userId, sessionId, { title });
           
-          setChatSessions(chatSessions.map(session => 
+          setChatSessions(prevSessions => prevSessions.map(session => 
             session.id === sessionId 
               ? { ...session, title, description: userQuery, timestamp: 'Just now' }
               : session
           ));
         } else {
-          setChatSessions(chatSessions.map(session => 
+          setChatSessions(prevSessions => prevSessions.map(session => 
             session.id === sessionId 
               ? { ...session, description: userQuery, timestamp: 'Just now' }
               : session
           ));
         }
         
-        console.log('Message stored successfully');
-      } catch (error) {
-        console.error('Failed to store message:', error);
+        console.log('Message stored successfully in DynamoDB');
+      } catch (storageError) {
+        console.error('Failed to store message in DynamoDB:', storageError);
+        // Continue execution - don't block UI for storage errors
       }
       
     } catch (error) {
-      console.error('Error querying Medical API:', error);
+      console.error('=== ERROR IN MEDICAL API CALL ===');
+      console.error('Error details:', error);
       
-      // Show error message to user
+      // Create user-friendly error message
+      let errorText = 'Sorry, I encountered an error while processing your medical query. ';
+      
+      if (error.message.includes('timeout')) {
+        errorText += 'The request timed out. Please try again.';
+      } else if (error.message.includes('HTTP 4')) {
+        errorText += 'There was a client error. Please check your query and try again.';
+      } else if (error.message.includes('HTTP 5')) {
+        errorText += 'There was a server error. Please try again in a moment.';
+      } else {
+        errorText += `Error: ${error.message}`;
+      }
+      
       const errorMessage = {
         id: Date.now() + 1,
-        text: `I apologize, but I encountered an error while processing your query: ${error.message}. Please try again.`,
+        text: errorText,
         type: 'ai',
         timestamp: new Date().toLocaleTimeString(),
         sources: [],
-        fileReferences: [],
-        isError: true
+        error: true,
       };
       
-      setMessages([...messages, newMessage, errorMessage]);
+      setMessages(prevMessages => [...prevMessages, errorMessage]);
     } finally {
       setIsLoading(false);
+      console.log('=== MEDICAL API CALL COMPLETED ===');
     }
   };
 
