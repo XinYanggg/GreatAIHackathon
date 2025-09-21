@@ -1,10 +1,11 @@
-import React, { useState, useEffect,useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare } from 'lucide-react';
 import Navigation from '../components/Navigation';
 import Sidebar from '../components/Sidebar';
 import ChatMessage from '../components/ChatMessage';
 import PromptInput from '../components/PromptInput';
 import SourceModal from '../components/SourceModal';
+import medicalAPI from '../utils/medicalQueryAPI'; // Import the API
 import {
   createChatSession,
   getUserChatSessions,
@@ -83,7 +84,6 @@ const AssistantPage = ({
       } else if (selectedDocument && initialQuery) {
         // Create new session for document query
         const newSession = await createNewChat();
-        console.log('docq');
         if (newSession) {
           // Send query with document context
           setTimeout(() => {
@@ -108,13 +108,6 @@ const AssistantPage = ({
       console.error('Error handling initial context:', error);
     }
   };
-
-  // Load messages when session changes
-  useEffect(() => {
-    if (currentSessionId && !initialSessionId) {
-      loadSessionMessages(currentSessionId);
-    }
-  }, [currentSessionId]);
 
   /**
    * Load all chat sessions for the user
@@ -269,34 +262,52 @@ const AssistantPage = ({
       setCurrentPrompt('');
     }
     
-    // Simulate AI processing - REPLACE WITH YOUR ACTUAL AI SERVICE
-    setTimeout(async () => {
-      let aiResponseText = 'Based on the medical documents analyzed, here is the information you requested...';
-      let sources = [
-        'Clinical_Guidelines_2024.pdf',
-        'Patient_Treatment_Protocol.pdf',
-        'Medical_Research_Study.pdf',
-      ];
-      let fileRefs = [
-        { fileId: 'doc-001', fileName: 'Clinical_Guidelines_2024.pdf' },
-        { fileId: 'doc-002', fileName: 'Patient_Treatment_Protocol.pdf' },
-      ];
+    try {
+      // === INTEGRATION WITH MEDICAL QUERY API ===
       
-      // If querying a specific document, customize the response
-      if (document) {
-        aiResponseText = `Based on the ${document.type === 'record' ? 'patient record' : 'clinical guide'} "${document.name}", here is the information about "${userQuery}":\n\n${document.description}\n\nThis is a simulated response. Replace with your actual AI service that queries the specific document.`;
-        sources = [document.name];
-        fileRefs = [{ fileId: document.fileId, fileName: document.name }];
+      // Prepare filters based on document context
+      const filters = {};
+      if (document && document.fileId) {
+        filters.documentId = document.fileId;
+      }
+      if (document && document.type === 'record' && document.patientName) {
+        filters.patientName = document.patientName;
       }
       
+      // Call the Medical Query API
+      const apiResponse = await medicalAPI.ask(userQuery, {
+        filters,
+        sessionId: sessionId
+      });
+      // Extract response data
+      const aiResponseText = apiResponse.answer || apiResponse.response || 'No response available';
+      
+      // Extract sources/citations from the API response
+      const citations = apiResponse.citations || apiResponse.documents || [];
+      
+      // Format sources for the UI
+      const sources = citations.map(citation => 
+        citation.documentName || citation.fileName || citation.title || 'Unknown Document'
+      );
+      
+      // Format file references
+      const fileRefs = citations.map(citation => ({
+        fileId: citation.documentId || citation.fileId || citation.id,
+        fileName: citation.documentName || citation.fileName || citation.title,
+        relevanceScore: citation.score || citation.relevance,
+        excerpt: citation.excerpt || citation.snippet
+      }));
+      
+      // Create AI response object
       const aiResponse = {
         text: aiResponseText,
         timestamp: new Date().toISOString(),
         sources: sources,
         fileReferences: fileRefs,
         queryType: document ? 'document_query' : queryType,
-        processingTimeMs: 1000,
-        confidenceScore: 0.92,
+        processingTimeMs: apiResponse.processingTime || apiResponse.responseTime,
+        confidenceScore: apiResponse.confidence || apiResponse.confidenceScore,
+        sessionId: apiResponse.sessionId || sessionId
       };
       
       const aiMessage = {
@@ -305,8 +316,10 @@ const AssistantPage = ({
         type: 'ai',
         timestamp: new Date().toLocaleTimeString(),
       };
+      
       setMessages([...messages, newMessage, aiMessage]);
       
+      // Store message in session
       try {
         await storeSessionMessage(userId, sessionId, userQuery, aiResponse);
         
@@ -332,8 +345,24 @@ const AssistantPage = ({
         console.error('Failed to store message:', error);
       }
       
+    } catch (error) {
+      console.error('Error querying Medical API:', error);
+      
+      // Show error message to user
+      const errorMessage = {
+        id: Date.now() + 1,
+        text: `I apologize, but I encountered an error while processing your query: ${error.message}. Please try again.`,
+        type: 'ai',
+        timestamp: new Date().toLocaleTimeString(),
+        sources: [],
+        fileReferences: [],
+        isError: true
+      };
+      
+      setMessages([...messages, newMessage, errorMessage]);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   const showSources = (sources) => {
@@ -416,7 +445,7 @@ const AssistantPage = ({
             
             {isLoading && (
               <div className="flex justify-center">
-                <div className="animate-pulse text-gray-500">AI is thinking...</div>
+                <div className="animate-pulse text-gray-500">AI is analyzing medical documents...</div>
               </div>
             )}
           </div>
