@@ -72,7 +72,7 @@ const UploadPage = ({ setCurrentPage, selectedFiles, setSelectedFiles }) => {
 
         // Generate unique filename to avoid conflicts
         const timestamp = Date.now();
-        const fileName = `${timestamp}_${fileInfo.file.name}`;
+        const fileName = `${fileInfo.file.name}`;
         
         const result = await uploadFileToS3(fileInfo.file, bucketName, fileName);
         

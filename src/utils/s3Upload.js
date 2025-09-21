@@ -114,7 +114,10 @@ export const getCitedSources = async (bucketName, uris) => {
       if (uri.startsWith("s3://")) {
         const parts = uri.replace("s3://", "").split("/");
         if (parts.length >= 4) {
-          uniqueFilenames.add(parts[3]); // 4th element = filename
+          const filename = parts[3];
+          if (!uniqueFilenames.has(filename)) {
+            uniqueFilenames.add(filename);
+          }
         }
       }
     });
