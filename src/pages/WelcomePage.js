@@ -521,12 +521,6 @@ const WelcomePage = ({ setCurrentPage, onSelectSession, onQueryDocument }) => {
             </div>
           </div>
         </div>
-
-        {/* Background decoration */}
-        <div className="fixed inset-0 pointer-events-none overflow-hidden">
-          <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-blue-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-          <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-indigo-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse delay-1000"></div>
-        </div>
       </div>
   );
 };
