@@ -316,7 +316,7 @@ const WelcomePage = ({ setCurrentPage, onSelectSession, onQueryDocument }) => {
               </button>
             </div>
 
-            <div className="overflow-y-auto mb-0" style={{height: '500px'}}>
+            <div className="overflow-y-auto mb-0" style={{height: '300px'}}>
               {activeTab === 'chats' && (
                 <div className="space-y-3">
                   {loadingSessions ? (
