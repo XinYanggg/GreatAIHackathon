@@ -5,6 +5,7 @@ import Sidebar from '../components/Sidebar';
 import ChatMessage from '../components/ChatMessage';
 import PromptInput from '../components/PromptInput';
 import SourceModal from '../components/SourceModal';
+import { getCitedSources } from '../utils/s3Upload';
 import medicalAPI from '../utils/medicalQueryAPI'; // Import the API
 import {
   createChatSession,
@@ -388,9 +389,6 @@ const AssistantPage = ({
         });
       }
       
-      console.log('Extracted sources:', sources);
-      console.log('File references:', fileReferences);
-      
       // Extract metadata
       const metadata = parsedResponse.metadata || {};
       
@@ -413,6 +411,22 @@ const AssistantPage = ({
         riskLevel: parsedResponse.riskLevel || null,
         recommendations: parsedResponse.recommendations || [],
       };
+      let enrichedSources = aiResponse.sources;
+      const bucketName = process.env.REACT_APP_S3_BUCKET_NAME;
+      if (!bucketName) {
+        console.log('No S3 bucket configured, skipping PDF fetch');
+        return;
+      }
+      try {
+        const result = await getCitedSources(bucketName, aiResponse.sources);
+        // Use the detailed sources from result.data if available
+        if (result && result.data && Array.isArray(result.data)) {
+          enrichedSources = result.data;
+        }
+      } catch (error) {
+        console.error('Error fetching cited sources:', error);
+        // Continue with original sources if fetch fails
+      }
       
       // Create the AI message for display
       const aiMessage = {
@@ -420,6 +434,7 @@ const AssistantPage = ({
         ...aiResponse,
         type: 'ai',
         timestamp: new Date().toLocaleTimeString(),
+        sources: enrichedSources,
       };
       
       console.log('AI message for UI:', aiMessage);
