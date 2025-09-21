@@ -291,16 +291,6 @@ const WelcomePage = ({ setCurrentPage, onSelectSession, onQueryDocument }) => {
                   </span>
                     <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 rounded-xl transition-opacity duration-300"></div>
                   </button>
-
-                  <button
-                      onClick={() => setActiveTab('records')}
-                      className="group bg-white text-slate-700 border-2 border-slate-200 px-8 py-4 rounded-xl text-lg font-semibold hover:border-blue-300 hover:text-blue-600 transition-all duration-300 shadow-sm hover:shadow-lg"
-                  >
-                  <span className="flex items-center justify-center">
-                    <Search className="w-5 h-5 mr-2" />
-                    Browse Documents
-                  </span>
-                  </button>
                 </div>
               </div>
 
